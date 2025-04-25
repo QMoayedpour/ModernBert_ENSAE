@@ -2,7 +2,7 @@
 
 We are working with a clinical dataset. To briefly summarize, any drug or treatment must undergo a series of verifications and tests before it can be approved for commercial use. Clinical trials represent the different testing phases that a treatment must go through. As illustrated in the figure below, several stages are required before a treatment can be validated.
 
-![dummy1](./figs/ctrial_pres.pwebp)
+![dummy1](./figs/ctrial_pres.png)
 
 To conduct these trials—whether on a small or large scale—research laboratories need to recruit patients who meet specific medical and demographic conditions. The data we are using is derived from the eligibility criteria of various clinical trials. These criteria can be found on the following [website](https://clinicaltrials.gov/) and looks like this:
 
