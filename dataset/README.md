@@ -42,3 +42,16 @@ In the training dataset, we have 9738 different sentences. Each sentence corresp
 
 
 ![dummy4](./figs/distribution_words.png)
+
+Since we only focus on specific medical terms (we are not interested in tagging a word as "verb" or "noun") the labels are heavily unbalanced
+
+
+| Label       |   Pourcentage (%) |
+|:------------|------------------:|
+| O           |             74.59 |
+| Condition   |             13.7  |
+| Procedure   |              4.34 |
+| Drug        |              3.71 |
+| Observation |              1.94 |
+| Person      |              1.07 |
+| Mood        |              0.65 |
