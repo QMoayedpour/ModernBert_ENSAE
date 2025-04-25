@@ -16,4 +16,23 @@ We downloaded an annotated dataset (see the details in ``data/``) for **Named En
 
 The BIO format offers clear boundaries for entities, marking the beginning (B) and continuation (I) of multi-word entities, while using "O" for non-entity words. It is flexible, simple to implement, and ensures easy extraction of entities. This format helps avoid ambiguity.
 
+
+The figure bellow shows an example of an annotated sentence in our dataset
+
 ![dummy](./figs/example_1.png)
+
+And we have them in a tabular format:
+
+
+|   sentence | Mot       | Label       |
+|-----------:|:----------|:------------|
+|          3 | Subject   | O           |
+|          3 | has       | O           |
+|          3 | curettage | B-Procedure |
+|          3 | for       | O           |
+|          3 | retained  | B-Condition |
+|          3 | product   | I-Condition |
+|          3 | after     | O           |
+|          3 | second    | O           |
+|          3 | trimester | O           |
+|          3 | abortion  | B-Procedure |
