@@ -55,3 +55,10 @@ Since we only focus on specific medical terms (we are not interested in tagging 
 | Observation |              1.94 |
 | Person      |              1.07 |
 | Mood        |              0.65 |
+
+
+| Label   |   Pourcentage (%) |
+|:--------|------------------:|
+| O       |             74.59 |
+| I       |             13.22 |
+| B       |             12.18 |
