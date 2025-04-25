@@ -19,7 +19,7 @@ The BIO format offers clear boundaries for entities, marking the beginning (B) a
 
 The figure bellow shows an example of an annotated sentence in our dataset
 
-![dummy](./figs/example_1.png)
+![dummy3](./figs/example_1.png)
 
 And we have them in a tabular format:
 
@@ -36,3 +36,9 @@ And we have them in a tabular format:
 |          3 | second    | O           |
 |          3 | trimester | O           |
 |          3 | abortion  | B-Procedure |
+
+
+In the training dataset, we have 9738 different sentences. Each sentence correspond to a line in an eligibility criteria. As we can see with the following figure, most of the sentence are short. Half of the sentences contains less than **10** tokens and the longest sentence contains **419** tokens. The whole training set contains **137744** tokens (which is few for a NLP problem).
+
+
+![dummy4](./figs/distribution_words)
