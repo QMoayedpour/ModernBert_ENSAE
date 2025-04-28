@@ -13,45 +13,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import f1_score, classification_report
 from concurrent.futures import ThreadPoolExecutor
-from keras_preprocessing.sequence import pad_sequences
-
-
-def agg_function(s):
-    return [(w, p) for w, p in zip(s["Mot"].values.tolist(), s["Label"].values.tolist())]
-
-
-def pad_sequences_torch(sequences, maxlen, padding_value=0):
-
-    sequences = [torch.tensor(seq, dtype=torch.long) for seq in sequences]
-
-    sequences = [seq[:maxlen] if len(seq) > maxlen else seq for seq in sequences]
-
-    padded = torch.full((len(sequences), maxlen), padding_value, dtype=torch.long)
-    for i, seq in enumerate(sequences):
-        padded[i, :len(seq)] = seq
-    return padded
-
-
-class SentenceGetter(object):
-    def __init__(self, data):
-        self.n_sent = 1
-        self.data = data
-        self.empty = False
-        self.grouped = self.data.groupby("sentence").apply(agg_function)
-        self.sentences = [s for s in self.grouped]
-
-    def get_next(self):
-        try:
-            s = self.grouped["Sentence: {}".format(self.n_sent)]
-            self.n_sent += 1
-            return s
-        except:
-            return None
+from src.utils import write_file, pad_sequences_torch
 
 
 class BertTrainer(object):
     def __init__(self, sentences=[], labels=[], tag_values=[],
-                 tokenizer='bert-base-uncased', max_len=512, device="cpu", mode="Bert"):
+                 tokenizer='bert-base-uncased', max_len=512, device="cpu", mode="Bert", custom_model=None,
+                 test_sentences=None, test_labels=None):
         self.sentences = sentences
         self.tag_values = tag_values
         self.tag2idx = {t: i for i, t in enumerate(self.tag_values)}
@@ -63,6 +31,10 @@ class BertTrainer(object):
         self.model = None
         self.device = device
         self.mode = mode
+        self.custom_model = custom_model
+        self.batch_loss = []
+        self.test_sentences = test_sentences
+        self.test_labels = test_labels
 
     def _load_tokenizer(self, tokenizer="bert-base-uncased", mode="Bert"):
         if mode == "Bert":
@@ -78,6 +50,9 @@ class BertTrainer(object):
                                                                           num_labels=len(self.tag2idx),
                                                                           output_attentions=False,
                                                                           output_hidden_states=False)
+        elif mode == "Custom":
+            assert self.custom_model is not None, "custom_model is empty"
+            self.model = self.custom_model
         
         print("Model Loaded")
 
@@ -102,28 +77,40 @@ class BertTrainer(object):
 
         return tokenized_sentence, labels
 
-    def preprocess(self, random_state=100, test_size=0.1, bs=32, FULL_FINETUNING=True,
-                   lr=3e-5, eps=1e-8):
-        tokenized_texts_and_labels = [self.tokenize_and_preserve_labels(sent, labs) for sent, labs in zip(self.sentences, self.labels) ]
+    def _tokenize_text(self, sentences, labels):
+        tokenized_texts_and_labels = [self.tokenize_and_preserve_labels(sent, labs) for sent, labs in zip(sentences, labels) ]
         tokenized_texts = [token_label_pair[0] for token_label_pair in tokenized_texts_and_labels]
 
-        self.Nlabels = [token_label_pair[1] for token_label_pair in tokenized_texts_and_labels]
+        Nlabels = [token_label_pair[1] for token_label_pair in tokenized_texts_and_labels]
 
-        self.input_ids = pad_sequences_torch([self.tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts],
-                                              maxlen=self.MAX_LEN, padding_value=0)
+        input_ids = pad_sequences_torch([self.tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts],
+                                        maxlen=self.MAX_LEN, padding_value=0)
 
-        self.tags = pad_sequences_torch(
-                                        [[self.tag2idx.get(l) for l in lab] for lab in self.Nlabels],
+        tags = pad_sequences_torch(
+                                        [[self.tag2idx.get(l) for l in lab] for lab in Nlabels],
                                         maxlen=self.MAX_LEN,
                                         padding_value=self.tag2idx["PAD"]
                                     )
 
-        self.attention_masks = [[float(i != 0.0) for i in ii] for ii in self.input_ids]
-        tr_inputs, val_inputs, tr_tags, val_tags = train_test_split(self.input_ids, self.tags,
-                                                                    random_state=random_state,
-                                                                    test_size=test_size)
-        tr_masks, val_masks, _, _ = train_test_split(self.attention_masks, self.input_ids,
-                                                     random_state=random_state, test_size=test_size)
+        attention_masks = [[float(i != 0.0) for i in ii] for ii in input_ids]
+
+        return (input_ids, tags, attention_masks)    
+
+    def preprocess(self, random_state=100, test_size=0.1, bs=32, FULL_FINETUNING=True,
+                   lr=3e-5, eps=1e-8):
+        (self.input_ids, self.tags, self.attention_masks) = self._tokenize_text(self.sentences, self.labels)
+
+        if self.test_sentences is None:
+            tr_inputs, val_inputs, tr_tags, val_tags = train_test_split(self.input_ids, self.tags,
+                                                                        random_state=random_state,
+                                                                        test_size=test_size)
+            tr_masks, val_masks, _, _ = train_test_split(self.attention_masks, self.input_ids,
+                                                         random_state=random_state, test_size=test_size)
+        else:
+            (val_inputs, val_tags, val_masks) = self._tokenize_text(self.test_sentences, self.test_labels)
+            tr_inputs = self.input_ids
+            tr_tags = self.tags
+                                                    
         tr_inputs = torch.tensor(tr_inputs)
         val_inputs = torch.tensor(val_inputs)
         tr_tags = torch.tensor(tr_tags)
@@ -158,9 +145,9 @@ class BertTrainer(object):
             eps=eps)
         
     def train_eval(self, epochs=1, max_grad_norm=1.0,
-                   weight=None, currloss=np.inf, path='./models/model1'):
+                   weight=None, currloss=np.inf, path='./models/model1', save_logs=None, verbose=True):
 
-        loss_values, validation_loss_values = [], []
+        loss_values, validation_loss_values, self.batch_loss = [], [], []
         self.model.to(self.device)
         total_steps = len(self.train_dataloader) * epochs
         if weight is None:
@@ -172,7 +159,11 @@ class BertTrainer(object):
             num_training_steps=total_steps
         )
 
-        for _ in range(epochs):#, desc="Epoch"):
+
+        if save_logs is not None:
+            log_file = open(save_logs, 'a', encoding='utf-8')
+
+        for epoch in range(epochs):#, desc="Epoch"):
             self.model.train()
             total_loss = 0
 
@@ -183,17 +174,21 @@ class BertTrainer(object):
 
                 self.model.zero_grad()
 
-                outputs = self.model(b_input_ids.long(),
-                                     attention_mask=b_input_mask, labels=b_labels.long())
+                if self.mode in ["Bert", "ModernBert"]:
+                    outputs = self.model(b_input_ids.long(),
+                                         attention_mask=b_input_mask, labels=b_labels.long())
+                    scores = outputs.logits
 
-                loss = outputs[0]
-                scores = outputs.logits
+                elif self.mode == "Custom":
+                    scores = self.model(b_input_ids.long())
+
                 targets = b_labels[:, :scores.shape[1]]
                 loss_fn = nn.CrossEntropyLoss(weight=class_weights)
                 loss = loss_fn(scores.view(-1, scores.shape[-1]), targets.view(-1).long())
                 loss.backward()
 
                 total_loss += loss.item()
+                self.batch_loss.append(loss.item())
 
                 torch.nn.utils.clip_grad_norm_(parameters=self.model.parameters(),
                                                max_norm=max_grad_norm)
@@ -203,7 +198,9 @@ class BertTrainer(object):
                 scheduler.step()
 
             avg_train_loss = total_loss / len(self.train_dataloader)
-            print("Average train loss: {}".format(avg_train_loss))
+
+            if verbose:
+                print("Average train loss: {}".format(avg_train_loss))
 
             loss_values.append(avg_train_loss)
 
@@ -219,8 +216,14 @@ class BertTrainer(object):
 
                     outputs = self.model(b_input_ids.long(),
                                          attention_mask=b_input_mask, labels=b_labels.long())
+                    if self.mode in ["Bert", "ModernBert"]:
+                        outputs = self.model(b_input_ids.long(),
+                                             attention_mask=b_input_mask, labels=b_labels.long())
+                        logits = outputs.logits.cpu().numpy()
 
-                logits = outputs[1].detach().cpu().numpy()
+                    elif self.mode == "Custom":
+                        logits = self.model(b_input_ids.long()).cpu().numpy()
+
                 label_ids = b_labels.to('cpu').numpy()
 
                 eval_loss += outputs[0].mean().item()
@@ -230,16 +233,20 @@ class BertTrainer(object):
             eval_loss = eval_loss / len(self.valid_dataloader)
             validation_loss_values.append(eval_loss)
 
-            print("Validation loss: {}".format(eval_loss))
             pred_tags = [self.tag_values[p_i] for p, l in zip(predictions, true_labels)
                          for p_i, l_i in zip(p, l) if self.tag_values[l_i] != "PAD"]
             valid_tags = [self.tag_values[l_i] for l in true_labels
                           for l_i in l if self.tag_values[l_i] != "PAD"]
-            print("Validation Accuracy: {}".format(accuracy_score(pred_tags, valid_tags)))
-            print("Validation F1-Score: {}".format(f1_score(pred_tags, valid_tags, average='weighted')))
+            acc = accuracy_score(pred_tags, valid_tags)
+            f1 = f1_score(pred_tags, valid_tags, average='weighted')
             classification_rep = classification_report(valid_tags, pred_tags)
-            print("Classification Report:\n", classification_rep)
-            print()
+
+            if verbose:
+                print("Validation loss: {}".format(eval_loss))
+                print("Validation Accuracy: {}".format(acc))
+                print("Validation F1-Score: {}".format(f1))
+                print("Classification Report:\n", classification_rep)
+                print()
 
             self.loss_values = loss_values
             self.validation_loss_values = validation_loss_values
@@ -247,6 +254,10 @@ class BertTrainer(object):
                 self.save_model(path)
                 print("Model saved successfully.")
                 currloss = eval_loss
+                if save_logs:
+                    with open(save_logs, 'w', encoding='utf-8') as log_file:
+                        write_file(log_file, epoch, epochs, avg_train_loss, eval_loss,
+                                   acc, f1, classification_rep)
 
     def save_model(self, path):
         self.model.save_pretrained(path)
@@ -280,7 +291,7 @@ class BertTrainer(object):
             predictions = list(tqdm(executor.map(self.predict, sentences)))
         return predictions 
 
-    def plotloss(self):
+    def plotloss(self, save_fig=None):
         sns.set(style='darkgrid')
 
         sns.set(font_scale=1.5)
@@ -293,5 +304,26 @@ class BertTrainer(object):
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.legend()
+        if save_fig:
+            plt.savefig(save_fig)
+        else:
+            plt.show()
 
-        plt.show()
+    def plot_batchloss(self, save_fig=None):
+        sns.set(style='darkgrid')
+
+        sns.set(font_scale=1.5)
+        plt.rcParams["figure.figsize"] = (12,6)
+
+        plt.plot(self.batch_loss, 'b-o', label="training batch loss")
+
+        plt.title("Learning curve")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.legend()
+
+        if save_fig:
+            plt.savefig(save_fig)
+
+        else:
+            plt.show()
