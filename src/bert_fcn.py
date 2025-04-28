@@ -7,7 +7,8 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler, Sequentia
 from transformers import BertTokenizer
 from sklearn.model_selection import train_test_split
 from transformers import get_linear_schedule_with_warmup
-from transformers import BertForTokenClassification, AdamW
+from transformers import BertForTokenClassification, ModernBertForTokenClassification, AutoTokenizer
+from torch.optim import AdamW
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import f1_score, classification_report
@@ -17,6 +18,18 @@ from keras_preprocessing.sequence import pad_sequences
 
 def agg_function(s):
     return [(w, p) for w, p in zip(s["Mot"].values.tolist(), s["Label"].values.tolist())]
+
+
+def pad_sequences_torch(sequences, maxlen, padding_value=0):
+
+    sequences = [torch.tensor(seq, dtype=torch.long) for seq in sequences]
+
+    sequences = [seq[:maxlen] if len(seq) > maxlen else seq for seq in sequences]
+
+    padded = torch.full((len(sequences), maxlen), padding_value, dtype=torch.long)
+    for i, seq in enumerate(sequences):
+        padded[i, :len(seq)] = seq
+    return padded
 
 
 class SentenceGetter(object):
@@ -38,17 +51,35 @@ class SentenceGetter(object):
 
 class BertTrainer(object):
     def __init__(self, sentences=[], labels=[], tag_values=[],
-                 tokenizer='bert-base-uncased', max_len=512, device="cpu"):
+                 tokenizer='bert-base-uncased', max_len=512, device="cpu", mode="Bert"):
         self.sentences = sentences
         self.tag_values = tag_values
         self.tag2idx = {t: i for i, t in enumerate(self.tag_values)}
         self.tokname = tokenizer
-        self.tokenizer = BertTokenizer.from_pretrained(tokenizer, do_lower_case=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer, do_lower_case=True)
         self.labels = labels
         self.MAX_LEN = max_len
         self.Nlabels = None
         self.model = None
         self.device = device
+        self.mode = mode
+
+    def _load_tokenizer(self, tokenizer="bert-base-uncased", mode="Bert"):
+        if mode == "Bert":
+            self.tokenizer = BertTokenizer.from_pretrained(tokenizer, do_lower_case=True)
+            self.model = BertForTokenClassification.from_pretrained(tokenizer,
+                                                                    num_labels=len(self.tag2idx),
+                                                                    output_attentions=False,
+                                                                    output_hidden_states=False)
+
+        elif mode == "ModernBert":
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer, do_lower_case=True)
+            self.model = ModernBertForTokenClassification.from_pretrained(tokenizer,
+                                                                          num_labels=len(self.tag2idx),
+                                                                          output_attentions=False,
+                                                                          output_hidden_states=False)
+        
+        print("Model Loaded")
 
     def getparam(self, MAX_LEN=512):
         self.MAX_LEN = MAX_LEN
@@ -78,13 +109,14 @@ class BertTrainer(object):
 
         self.Nlabels = [token_label_pair[1] for token_label_pair in tokenized_texts_and_labels]
 
-        self.input_ids = pad_sequences([self.tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts],
-                                       maxlen=self.MAX_LEN, dtype="long", value=0.0,
-                                       truncating="post", padding="post")
+        self.input_ids = pad_sequences_torch([self.tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_texts],
+                                              maxlen=self.MAX_LEN, padding_value=0)
 
-        self.tags = pad_sequences([[self.tag2idx.get(l) for l in lab] for lab in self.Nlabels],
-                                  maxlen=self.MAX_LEN, value=self.tag2idx["PAD"], padding="post",
-                                  dtype="long", truncating="post")
+        self.tags = pad_sequences_torch(
+                                        [[self.tag2idx.get(l) for l in lab] for lab in self.Nlabels],
+                                        maxlen=self.MAX_LEN,
+                                        padding_value=self.tag2idx["PAD"]
+                                    )
 
         self.attention_masks = [[float(i != 0.0) for i in ii] for ii in self.input_ids]
         tr_inputs, val_inputs, tr_tags, val_tags = train_test_split(self.input_ids, self.tags,
@@ -105,11 +137,9 @@ class BertTrainer(object):
         self.valid_data = TensorDataset(val_inputs, val_masks, val_tags)
         self.valid_sampler = SequentialSampler(self.valid_data)
         self.valid_dataloader = DataLoader(self.valid_data, sampler=self.valid_sampler, batch_size=bs)
-        self.model = BertForTokenClassification.from_pretrained(
-                                                                self.tokname,
-                                                                num_labels=len(self.tag2idx),
-                                                                output_attentions=False,
-                                                                output_hidden_states=False)
+
+        self._load_tokenizer(self.tokname, mode=self.mode)
+
         if FULL_FINETUNING:
             param_optimizer = list(self.model.named_parameters())
             no_decay = ['bias', 'gamma', 'beta']
@@ -128,11 +158,13 @@ class BertTrainer(object):
             eps=eps)
         
     def train_eval(self, epochs=1, max_grad_norm=1.0,
-                   weight=[1,1,1], currloss=np.inf, path='./outputsNSD/modeleNSD'):
+                   weight=None, currloss=np.inf, path='./models/model1'):
 
         loss_values, validation_loss_values = [], []
         self.model.to(self.device)
         total_steps = len(self.train_dataloader) * epochs
+        if weight is None:
+            weight = [1] * len(self.tag2idx)
         class_weights = torch.tensor(weight, dtype=torch.float).to(self.device)
         scheduler = get_linear_schedule_with_warmup(
             self.optimizer,
@@ -140,18 +172,18 @@ class BertTrainer(object):
             num_training_steps=total_steps
         )
 
-        for _ in trange(epochs, desc="Epoch"):
+        for _ in range(epochs):#, desc="Epoch"):
             self.model.train()
             total_loss = 0
 
-            for step, batch in enumerate(self.train_dataloader):
+            for step, batch in tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader)):
 
                 batch = tuple(t.to(self.device) for t in batch)
                 b_input_ids, b_input_mask, b_labels = batch
 
                 self.model.zero_grad()
 
-                outputs = self.model(b_input_ids.long(), token_type_ids=None,
+                outputs = self.model(b_input_ids.long(),
                                      attention_mask=b_input_mask, labels=b_labels.long())
 
                 loss = outputs[0]
@@ -177,16 +209,15 @@ class BertTrainer(object):
 
             self.model.eval()
 
-            eval_loss, eval_accuracy = 0, 0
-            nb_eval_steps, nb_eval_examples = 0, 0
-            predictions , true_labels = [], []
+            eval_loss = 0
+            predictions, true_labels = [], []
             for batch in self.valid_dataloader:
                 batch = tuple(t.to(self.device) for t in batch)
                 b_input_ids, b_input_mask, b_labels = batch
 
                 with torch.no_grad():
 
-                    outputs = self.model(b_input_ids.long(), token_type_ids=None,
+                    outputs = self.model(b_input_ids.long(),
                                          attention_mask=b_input_mask, labels=b_labels.long())
 
                 logits = outputs[1].detach().cpu().numpy()
@@ -237,7 +268,7 @@ class BertTrainer(object):
         attention_mask = [[float(i != 0.0) for i in tokens_tensor[0]]]
         attention_mask = torch.tensor(attention_mask).to(self.device)
         with torch.no_grad():
-            outputs = self.model(tokens_tensor, token_type_ids=None, attention_mask=attention_mask)
+            outputs = self.model(tokens_tensor, attention_mask=attention_mask)
         logits = outputs[0]
         logits = logits.detach().cpu().numpy()
         label_indices = np.argmax(logits, axis=2)[0]
