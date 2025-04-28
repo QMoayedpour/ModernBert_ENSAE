@@ -1,0 +1,29 @@
+Epoch 2/5
+Average train loss: 0.02034160894270388
+Validation loss: 0.018852505283277542
+Validation Accuracy: 0.8376429105673683
+Validation F1-Score: 0.8548566785795687
+Classification Report:
+               precision    recall  f1-score   support
+
+  B-Condition       0.81      0.71      0.76      1836
+       B-Drug       0.76      0.79      0.78       714
+       B-Mood       0.75      0.10      0.17        93
+B-Observation       0.31      0.07      0.12       137
+     B-Person       0.81      0.71      0.76       184
+  B-Procedure       0.69      0.48      0.56       430
+  I-Condition       0.77      0.73      0.75      1691
+       I-Drug       0.78      0.60      0.68       498
+       I-Mood       0.00      0.00      0.00        56
+I-Observation       0.20      0.01      0.02       256
+     I-Person       0.00      0.00      0.00        21
+  I-Procedure       0.72      0.36      0.48       459
+            O       0.86      0.95      0.91     12343
+
+     accuracy                           0.84     18718
+    macro avg       0.57      0.42      0.46     18718
+ weighted avg       0.82      0.84      0.82     18718
+
+
+================================================================================
+
