@@ -97,7 +97,10 @@ class BertTrainer(object):
         return (input_ids, tags, attention_masks)    
 
     def preprocess(self, random_state=100, test_size=0.1, bs=32, FULL_FINETUNING=True,
-                   lr=3e-5, eps=1e-8):
+                   lr=3e-5, eps=1e-8, verbose=False):
+
+        if verbose:
+            print("Loading Dataset and Model ...")
         (self.input_ids, self.tags, self.attention_masks) = self._tokenize_text(self.sentences, self.labels)
 
         if self.test_sentences is None:
@@ -110,7 +113,7 @@ class BertTrainer(object):
             (val_inputs, val_tags, val_masks) = self._tokenize_text(self.test_sentences, self.test_labels)
             tr_inputs = self.input_ids
             tr_tags = self.tags
-                                                    
+                                      
         tr_inputs = torch.tensor(tr_inputs)
         val_inputs = torch.tensor(val_inputs)
         tr_tags = torch.tensor(tr_tags)
@@ -143,7 +146,9 @@ class BertTrainer(object):
             optimizer_grouped_parameters,
             lr=lr,
             eps=eps)
-        
+        if verbose:
+            print("Loading Complete !")
+
     def train_eval(self, epochs=1, max_grad_norm=1.0,
                    weight=None, currloss=np.inf, path='./models/model1', save_logs=None, verbose=True):
 
@@ -152,13 +157,18 @@ class BertTrainer(object):
         total_steps = len(self.train_dataloader) * epochs
         if weight is None:
             weight = [1] * len(self.tag2idx)
-        class_weights = torch.tensor(weight, dtype=torch.float).to(self.device)
-        scheduler = get_linear_schedule_with_warmup(
-            self.optimizer,
-            num_warmup_steps=0,
-            num_training_steps=total_steps
-        )
 
+        if not isinstance(weight, list):
+            weight = torch.tensor(weight, dtype=torch.float).to(self.device)
+
+        class_weights = weight.to(self.device)
+        loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+
+        #scheduler = get_linear_schedule_with_warmup(
+        #    self.optimizer,
+        #    num_warmup_steps=20000,
+        #    num_training_steps=total_steps
+        #)
 
         if save_logs is not None:
             log_file = open(save_logs, 'a', encoding='utf-8')
@@ -183,7 +193,7 @@ class BertTrainer(object):
                     scores = self.model(b_input_ids.long())
 
                 targets = b_labels[:, :scores.shape[1]]
-                loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+
                 loss = loss_fn(scores.view(-1, scores.shape[-1]), targets.view(-1).long())
                 loss.backward()
 
@@ -195,7 +205,7 @@ class BertTrainer(object):
 
                 self.optimizer.step()
 
-                scheduler.step()
+                #scheduler.step()
 
             avg_train_loss = total_loss / len(self.train_dataloader)
 
@@ -214,8 +224,6 @@ class BertTrainer(object):
 
                 with torch.no_grad():
 
-                    outputs = self.model(b_input_ids.long(),
-                                         attention_mask=b_input_mask, labels=b_labels.long())
                     if self.mode in ["Bert", "ModernBert"]:
                         outputs = self.model(b_input_ids.long(),
                                              attention_mask=b_input_mask, labels=b_labels.long())
@@ -226,7 +234,7 @@ class BertTrainer(object):
 
                 label_ids = b_labels.to('cpu').numpy()
 
-                eval_loss += outputs[0].mean().item()
+                eval_loss += loss_fn(scores.view(-1, scores.shape[-1]), targets.view(-1).long()).mean().item()
                 predictions.extend([list(p) for p in np.argmax(logits, axis=2)])
                 true_labels.extend(label_ids)
 
@@ -260,8 +268,9 @@ class BertTrainer(object):
                                    acc, f1, classification_rep)
 
     def save_model(self, path):
-        self.model.save_pretrained(path)
-        self.tokenizer.save_pretrained(path)
+        if self.mode != "Custom":
+            self.model.save_pretrained(path)
+            self.tokenizer.save_pretrained(path)
 
     def load_model(self, path):
         self.model = BertForTokenClassification.from_pretrained(path)
@@ -286,10 +295,48 @@ class BertTrainer(object):
         labels = [self.tag_values[label_idx] for label_idx in label_indices]
         return list(zip(tokenized_sentence, labels))
 
-    def batch_predict(self, sentences):
-        with ThreadPoolExecutor() as executor:
-            predictions = list(tqdm(executor.map(self.predict, sentences)))
-        return predictions 
+    def batch_predict(self, sentences, batch_size=32):
+        """
+        Batch predict function optimized for speed.
+        """
+        self.model.to(self.device)
+        self.model.eval()
+
+        all_tokenized = []
+        sentence_maps = []
+
+        for sent in sentences:
+            tokens = self.tokenizer.tokenize(sent)
+            indexed_tokens = self.tokenizer.convert_tokens_to_ids(tokens)
+            all_tokenized.append(indexed_tokens)
+            sentence_maps.append(tokens)
+
+        max_len = min(max(len(seq) for seq in all_tokenized), self.MAX_LEN)
+        input_ids = pad_sequences_torch(all_tokenized, maxlen=max_len, padding_value=0)
+        attention_masks = [[float(i != 0.0) for i in ii] for ii in input_ids]
+
+        input_ids = torch.tensor(input_ids).to(self.device)
+        attention_masks = torch.tensor(attention_masks).to(self.device)
+
+        dataset = TensorDataset(input_ids, attention_masks)
+        sampler = SequentialSampler(dataset)
+        dataloader = DataLoader(dataset, sampler=sampler, batch_size=batch_size)
+
+        all_predictions = []
+
+        with torch.no_grad():
+            for batch in tqdm(dataloader, desc="Predicting"):
+                batch_input_ids, batch_attention_masks = batch
+                outputs = self.model(batch_input_ids.long(), attention_mask=batch_attention_masks)
+                logits = outputs[0]
+                logits = logits.detach().cpu().numpy()
+                batch_predictions = np.argmax(logits, axis=2)
+
+                for pred, tokens in zip(batch_predictions, sentence_maps):
+                    pred_labels = [self.tag_values[label_idx] for label_idx in pred[:len(tokens)]]
+                    all_predictions.append(list(zip(tokens, pred_labels)))
+
+        return all_predictions
 
     def plotloss(self, save_fig=None):
         sns.set(style='darkgrid')
@@ -315,10 +362,9 @@ class BertTrainer(object):
         sns.set(font_scale=1.5)
         plt.rcParams["figure.figsize"] = (12,6)
 
-        plt.plot(self.batch_loss, 'b-o', label="training batch loss")
+        plt.plot(self.batch_loss, label="training batch loss")
 
         plt.title("Learning curve")
-        plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.legend()
 

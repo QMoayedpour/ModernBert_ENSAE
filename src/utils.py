@@ -2,6 +2,28 @@ import os
 import torch
 
 
+def prepare_dataset(df):
+    getter = SentenceGetter(df)
+
+    labels = [[s[1] for s in sentence] for sentence in getter.sentences]
+    sentences = [[word[0] for word in sentence] for sentence in getter.sentences]
+
+    tag_values = list(set(df["Label"].values))
+    tag_values.append("PAD")
+    tag2idx = {t: i for i, t in enumerate(tag_values)}
+
+    return (labels, sentences, tag_values, tag2idx)
+
+
+def align_class_weights(df, tag2idx):
+    label_weights_dict = ((df["Label"].value_counts()/len(df))**-1).to_dict()
+    num_classes = len(tag2idx)
+    weights = torch.zeros(num_classes, dtype=torch.float)
+    for label, idx in tag2idx.items():
+        weights[idx] = label_weights_dict.get(label, 1.0)
+    return weights
+
+
 def write_file(log_file, epoch, epochs, avg_train_loss, eval_loss, acc, f1, classif_report):
     log_file.write(f"Epoch {epoch+1}/{epochs}\n")
     log_file.write(f"Average train loss: {avg_train_loss}\n")
