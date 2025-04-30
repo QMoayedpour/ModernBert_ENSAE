@@ -1,0 +1,8 @@
+PATH_MODEL : "./models/ModernBert1"
+PATH_LOGS : "./logs/ModernBert1.txt"
+PATH_VALID_LOGS : "./logs/ModernBertValid.txt"
+MODEL : "answerdotai/ModernBERT-base"
+PATH_DATASET : "./data/"
+DEVICE : "cuda"
+BATCH_SIZE : 16
+EPOCHS : 5
