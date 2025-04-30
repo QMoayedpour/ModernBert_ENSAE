@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from wordcloud import WordCloud, STOPWORDS
 
 
 def get_n_words_per_setence(df, save=False):
@@ -9,10 +10,10 @@ def get_n_words_per_setence(df, save=False):
     plt.figure(figsize=(12, 6))
     sns.set_theme(style="whitegrid")
 
-    ax = sns.histplot(w_p_sentence, 
-                      kde=True, 
-                      bins=30, 
-                      color="#4CB391", 
+    ax = sns.histplot(w_p_sentence,
+                      kde=True,
+                      bins=30,
+                      color="#4CB391",
                       edgecolor="white",
                       linewidth=0.5)
 
@@ -24,7 +25,7 @@ def get_n_words_per_setence(df, save=False):
     median_val = w_p_sentence.median()
     plt.axvline(median_val, color='#E94B3C', linestyle='--', linewidth=1.5)
     plt.text(median_val*1.05, plt.ylim()[1]*0.9,
-            f'Median: {int(median_val)} words',
+             f'Median: {int(median_val)} words',
              color='#E94B3C')
 
     sns.despine(left=True)
@@ -36,7 +37,30 @@ def get_n_words_per_setence(df, save=False):
         plt.show()
 
 
+def get_wordcloud(df, n_words=200, save_fig=None):
+    text = ' '.join(df['Mot'].astype(str))
+
+    stop_words = set(STOPWORDS)
+
+    wordcloud = WordCloud(
+        stopwords=stop_words,
+        background_color='white',
+        width=1600,
+        height=800,
+        max_words=n_words
+    ).generate(text)
+
+    plt.figure(figsize=(10, 6))
+    plt.imshow(wordcloud)
+    plt.axis('off')
+    if save_fig:
+        plt.savefig(save_fig)
+    else:
+        plt.show()
+
+
 if __name__ == "__main__":
 
     df = pd.read_csv("../data/train.csv", index_col=0)
     get_n_words_per_setence(df, "./figs/distribution_words.png")
+    get_wordcloud(df, save_fig="./figs/wordcloud.png")
