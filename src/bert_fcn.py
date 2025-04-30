@@ -160,7 +160,9 @@ class BertTrainer(object):
             print("Loading Complete !")
 
     def train_eval(self, epochs=1, max_grad_norm=1.0,
-                   weight=None, currloss=np.inf, path='./models/model1', save_logs=None, verbose=True):
+                   weight=None, currloss=np.inf, patience=2,
+                   path='./models/model1',
+                   save_logs=None, verbose=True):
 
         loss_values, validation_loss_values, self.batch_loss = [], [], []
         self.model.to(self.device)
@@ -173,7 +175,7 @@ class BertTrainer(object):
 
         class_weights = weight.to(self.device)
         loss_fn = nn.CrossEntropyLoss(weight=class_weights)
-
+        stop_count = 0
         #scheduler = get_linear_schedule_with_warmup(
         #    self.optimizer,
         #    num_warmup_steps=20000,
@@ -234,6 +236,7 @@ class BertTrainer(object):
             self.loss_values = loss_values
             self.validation_loss_values = validation_loss_values
             if currloss > eval_loss:
+                stop_count = 0
                 self.save_model(path)
                 print("Model saved successfully.")
                 currloss = eval_loss
@@ -241,6 +244,10 @@ class BertTrainer(object):
                     with open(save_logs, 'w', encoding='utf-8') as log_file:
                         write_file(log_file, eval_loss, acc, f1, classification_rep,
                                    epoch, epochs, avg_train_loss)
+            stop_count += 1
+
+            if stop_count > patience:
+                break
 
     def _test_model(self, dataloader, loss_fn, verbose=False):
         self.model.eval()
@@ -262,7 +269,7 @@ class BertTrainer(object):
                     scores = self.model(b_input_ids.long())
 
             logits = scores.cpu().numpy()
-            label_ids = b_labels.to('cpu').numpy()
+            label_ids = b_labels.cpu().numpy()
             targets = b_labels[:, :scores.shape[1]]
             eval_loss += loss_fn(scores.view(-1, scores.shape[-1]),
                                  targets.view(-1).long()).mean().item()
@@ -283,6 +290,7 @@ class BertTrainer(object):
         return (eval_loss, acc, f1, classification_rep)
 
     def evaluate_model(self, df, bs=16, weights=None, verbose=True, save_logs=None):
+        self.model.to(self.device)
         dataloader = self.df_to_loader(df, bs=bs)
         if weights is None:
             weights = [1]*len(self.tag2idx)
