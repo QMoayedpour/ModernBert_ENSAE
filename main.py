@@ -4,14 +4,14 @@ import pandas as pd
 import warnings
 warnings.filterwarnings("ignore")
 
-PATH_MODEL = "./models/test"
-PATH_LOGS = "./logs/test.txt"
-PATH_VALID_LOGS = "./logs/valid.txt"
+PATH_MODEL = "./models/ModernBert1"
+PATH_LOGS = "./logs/ModernBert1.txt"
+PATH_VALID_LOGS = "./logs/ModernBertValid.txt"
 MODEL = "answerdotai/ModernBERT-base"
 PATH_DATASET = "./data/"
-DEVICE = "cpu"
-BATCH_SIZE = 8
-EPOCHS = 1
+DEVICE = "cuda"
+BATCH_SIZE = 16
+EPOCHS = 5
 
 
 def main(config):
@@ -22,7 +22,7 @@ def main(config):
     labels, sentences, tag_values, tag2idx = prepare_dataset(df_train)
     labels_t, sentences_t, tag_values_t, _ = prepare_dataset(df_test)
 
-    trainer = BertTrainer(sentences=sentences[:10], labels=labels[:10], tag_values=tag_values,
+    trainer = BertTrainer(sentences=sentences, labels=labels, tag_values=tag_values,
                           tokenizer=MODEL, device=DEVICE, mode="ModernBert")
 
     trainer.preprocess(bs=BATCH_SIZE)
@@ -35,7 +35,7 @@ def main(config):
     trainer.load_model(PATH_MODEL)
 
     # ADD EVAL FCN
-    trainer.evaluate_model(df_valid.iloc[:1000], BATCH_SIZE, weights,
+    trainer.evaluate_model(df_valid.iloc, BATCH_SIZE, weights,
                            verbose=False, save_logs=PATH_VALID_LOGS)
 
 
