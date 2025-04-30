@@ -5,4 +5,5 @@ MODEL : "answerdotai/ModernBERT-base"
 PATH_DATASET : "./data/"
 DEVICE : "cuda"
 BATCH_SIZE : 16
-EPOCHS : 5
+EPOCHS : 10
+PATIENCE : 2

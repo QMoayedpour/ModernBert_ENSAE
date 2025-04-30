@@ -5,15 +5,6 @@ import yaml
 import warnings
 warnings.filterwarnings("ignore")
 
-PATH_MODEL = "./models/ModernBert1"
-PATH_LOGS = "./logs/ModernBert1.txt"
-PATH_VALID_LOGS = "./logs/ModernBertValid.txt"
-MODEL = "answerdotai/ModernBERT-base"
-PATH_DATASET = "./data/"
-DEVICE = "cuda"
-BATCH_SIZE = 16
-EPOCHS = 5
-
 
 def main(config):
     df_train = pd.read_csv(config['PATH_DATASET'] + "train.csv")
@@ -32,11 +23,11 @@ def main(config):
     weights = align_class_weights(df_train, tag2idx)
 
     trainer.train_eval(weight=weights, path=config['PATH_MODEL'],
-                       epochs=config['EPOCHS'], save_logs=config['PATH_LOGS'], verbose=False)
+                       epochs=config['EPOCHS'], save_logs=config['PATH_LOGS'],
+                       patience=config["PATIENCE"], verbose=False)
 
     trainer.load_model(config['PATH_MODEL'])
 
-    # ADD EVAL FCN
     trainer.evaluate_model(df_valid, config['BATCH_SIZE'], weights,
                            verbose=False, save_logs=config['PATH_VALID_LOGS'])
 
