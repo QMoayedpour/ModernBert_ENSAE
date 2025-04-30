@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import f1_score, classification_report
 from concurrent.futures import ThreadPoolExecutor
-from src.utils import write_file, pad_sequences_torch
+from src.utils import write_file, pad_sequences_torch, prepare_dataset
 
 
 class BertTrainer(object):
@@ -96,56 +96,67 @@ class BertTrainer(object):
 
         return (input_ids, tags, attention_masks)    
 
+    def df_to_loader(self, df, bs=16):
+        labels, sentences, tag_values, _ = prepare_dataset(df)
+        dataloader = self._get_dataloader(labels, sentences, tag_values, bs=bs)
+        return dataloader
+
+    def _get_dataloader(self, labels, sentences, tag_values, bs=16, return_logs=False):
+        (input_ids, tags,
+         attention_masks) = self._tokenize_text(sentences, labels)
+
+        inputs = torch.tensor(input_ids)
+        tags = torch.tensor(tags)
+        masks = torch.tensor(attention_masks)
+        data = TensorDataset(inputs, masks, tags)
+        sampler = RandomSampler(data)
+        dataloader = DataLoader(data, sampler=sampler, batch_size=bs)
+        if return_logs:
+            return (dataloader, input_ids, tags, attention_masks)
+
+        return dataloader
+
+    def _create_dataloader(self, inputs, masks, tags, bs, shuffle=True):
+        dataset = TensorDataset(torch.tensor(inputs), torch.tensor(masks), torch.tensor(tags))
+        sampler = RandomSampler(dataset) if shuffle else SequentialSampler(dataset)
+        return DataLoader(dataset, sampler=sampler, batch_size=bs)
+
     def preprocess(self, random_state=100, test_size=0.1, bs=32, FULL_FINETUNING=True,
                    lr=3e-5, eps=1e-8, verbose=False):
 
         if verbose:
             print("Loading Dataset and Model ...")
-        (self.input_ids, self.tags, self.attention_masks) = self._tokenize_text(self.sentences, self.labels)
+
+        input_ids, tags, attention_masks = self._tokenize_text(self.sentences, self.labels)
 
         if self.test_sentences is None:
-            tr_inputs, val_inputs, tr_tags, val_tags = train_test_split(self.input_ids, self.tags,
-                                                                        random_state=random_state,
-                                                                        test_size=test_size)
-            tr_masks, val_masks, _, _ = train_test_split(self.attention_masks, self.input_ids,
-                                                         random_state=random_state, test_size=test_size)
+            tr_inputs, val_inputs, tr_tags, val_tags = train_test_split(
+                input_ids, tags, test_size=test_size, random_state=random_state)
+            tr_masks, val_masks, _, _ = train_test_split(
+                attention_masks, input_ids, test_size=test_size, random_state=random_state)
         else:
-            (val_inputs, val_tags, val_masks) = self._tokenize_text(self.test_sentences, self.test_labels)
-            tr_inputs = self.input_ids
-            tr_tags = self.tags
-                                      
-        tr_inputs = torch.tensor(tr_inputs)
-        val_inputs = torch.tensor(val_inputs)
-        tr_tags = torch.tensor(tr_tags)
-        val_tags = torch.tensor(val_tags)
-        tr_masks = torch.tensor(tr_masks)
-        val_masks = torch.tensor(val_masks)
-        self.train_data = TensorDataset(tr_inputs, tr_masks, tr_tags)
-        self.train_sampler = RandomSampler(self.train_data)
-        self.train_dataloader = DataLoader(self.train_data, sampler=self.train_sampler, batch_size=bs)
+            tr_inputs, tr_tags, tr_masks = input_ids, tags, attention_masks
+            val_inputs, val_tags, val_masks = self._tokenize_text(self.test_sentences,
+                                                                  self.test_labels)
 
-        self.valid_data = TensorDataset(val_inputs, val_masks, val_tags)
-        self.valid_sampler = SequentialSampler(self.valid_data)
-        self.valid_dataloader = DataLoader(self.valid_data, sampler=self.valid_sampler, batch_size=bs)
+        self.train_dataloader = self._create_dataloader(tr_inputs, tr_masks,
+                                                        tr_tags, bs, shuffle=True)
+        self.valid_dataloader = self._create_dataloader(val_inputs, val_masks,
+                                                        val_tags, bs, shuffle=False)
 
         self._load_tokenizer(self.tokname, mode=self.mode)
 
-        if FULL_FINETUNING:
-            param_optimizer = list(self.model.named_parameters())
-            no_decay = ['bias', 'gamma', 'beta']
-            optimizer_grouped_parameters = [
-                {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
-                 'weight_decay_rate': 0.01},
-                {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
-                 'weight_decay_rate': 0.0}]
-        else:
-            param_optimizer = list(self.model.classifier.named_parameters())
-            optimizer_grouped_parameters = [{"params": [p for n, p in param_optimizer]}]
+        params = self.model.named_parameters() if FULL_FINETUNING else self.model.classifier.named_parameters()
+        no_decay = ['bias', 'gamma', 'beta']
+        optimizer_grouped_parameters = [
+            {'params': [p for n, p in params if not any(nd in n for nd in no_decay)],
+            'weight_decay_rate': 0.01},
+            {'params': [p for n, p in params if any(nd in n for nd in no_decay)],
+            'weight_decay_rate': 0.0}
+        ] if FULL_FINETUNING else [{"params": [p for n, p in params]}]
 
-        self.optimizer = AdamW(
-            optimizer_grouped_parameters,
-            lr=lr,
-            eps=eps)
+        self.optimizer = AdamW(optimizer_grouped_parameters, lr=lr, eps=eps)
+
         if verbose:
             print("Loading Complete !")
 
@@ -158,7 +169,7 @@ class BertTrainer(object):
         if weight is None:
             weight = [1] * len(self.tag2idx)
 
-        if not isinstance(weight, list):
+        if isinstance(weight, list):
             weight = torch.tensor(weight, dtype=torch.float).to(self.device)
 
         class_weights = weight.to(self.device)
@@ -214,41 +225,10 @@ class BertTrainer(object):
 
             loss_values.append(avg_train_loss)
 
-            self.model.eval()
+            (eval_loss, acc,
+             f1, classification_rep) = self._test_model(self.valid_dataloader, loss_fn)
 
-            eval_loss = 0
-            predictions, true_labels = [], []
-            for batch in self.valid_dataloader:
-                batch = tuple(t.to(self.device) for t in batch)
-                b_input_ids, b_input_mask, b_labels = batch
-
-                with torch.no_grad():
-
-                    if self.mode in ["Bert", "ModernBert"]:
-                        outputs = self.model(b_input_ids.long(),
-                                             attention_mask=b_input_mask, labels=b_labels.long())
-                        logits = outputs.logits.cpu().numpy()
-
-                    elif self.mode == "Custom":
-                        logits = self.model(b_input_ids.long()).cpu().numpy()
-
-                label_ids = b_labels.to('cpu').numpy()
-
-                eval_loss += loss_fn(scores.view(-1, scores.shape[-1]), targets.view(-1).long()).mean().item()
-                predictions.extend([list(p) for p in np.argmax(logits, axis=2)])
-                true_labels.extend(label_ids)
-
-            eval_loss = eval_loss / len(self.valid_dataloader)
             validation_loss_values.append(eval_loss)
-
-            pred_tags = [self.tag_values[p_i] for p, l in zip(predictions, true_labels)
-                         for p_i, l_i in zip(p, l) if self.tag_values[l_i] != "PAD"]
-            valid_tags = [self.tag_values[l_i] for l in true_labels
-                          for l_i in l if self.tag_values[l_i] != "PAD"]
-            acc = accuracy_score(pred_tags, valid_tags)
-            f1 = f1_score(pred_tags, valid_tags, average='weighted')
-            classification_rep = classification_report(valid_tags, pred_tags)
-
             if verbose:
                 print("Validation loss: {}".format(eval_loss))
                 print("Validation Accuracy: {}".format(acc))
@@ -267,15 +247,59 @@ class BertTrainer(object):
                         write_file(log_file, epoch, epochs, avg_train_loss, eval_loss,
                                    acc, f1, classification_rep)
 
+    def _test_model(self, dataloader, loss_fn):
+        self.model.eval()
+
+        eval_loss = 0
+        predictions, true_labels = [], []
+        for batch in dataloader:
+            batch = tuple(t.to(self.device) for t in batch)
+            b_input_ids, b_input_mask, b_labels = batch
+
+            with torch.no_grad():
+
+                if self.mode in ["Bert", "ModernBert"]:
+                    outputs = self.model(b_input_ids.long(),
+                                         attention_mask=b_input_mask, labels=b_labels.long())
+                    scores = outputs.logits
+
+                elif self.mode == "Custom":
+                    scores = self.model(b_input_ids.long())
+
+            logits = scores.cpu().numpy()
+            label_ids = b_labels.to('cpu').numpy()
+            targets = b_labels[:, :scores.shape[1]]
+            eval_loss += loss_fn(scores.view(-1, scores.shape[-1]), targets.view(-1).long()).mean().item()
+            predictions.extend([list(p) for p in np.argmax(logits, axis=2)])
+            true_labels.extend(label_ids)
+
+        eval_loss = eval_loss / len(self.valid_dataloader)
+
+        pred_tags = [self.tag_values[p_i] for p, l in zip(predictions, true_labels)
+                     for p_i, l_i in zip(p, l) if self.tag_values[l_i] != "PAD"]
+        valid_tags = [self.tag_values[l_i] for l in true_labels
+                      for l_i in l if self.tag_values[l_i] != "PAD"]
+        acc = accuracy_score(pred_tags, valid_tags)
+        f1 = f1_score(pred_tags, valid_tags, average='weighted')
+        labels = [label for label in self.tag_values if label != "PAD"]
+        classification_rep = classification_report(valid_tags, pred_tags, labels=labels)
+
+        return (eval_loss, acc, f1, classification_rep)
+
+
     def save_model(self, path):
         if self.mode != "Custom":
             self.model.save_pretrained(path)
             self.tokenizer.save_pretrained(path)
 
     def load_model(self, path):
-        self.model = BertForTokenClassification.from_pretrained(path)
-        self.tokenizer = BertTokenizer.from_pretrained(path)
-        self.model.eval()
+        if self.mode == "ModernBert":
+            self.model = ModernBertForTokenClassification.from_pretrained(path)
+            self.tokenizer = AutoTokenizer.from_pretrained(path)
+            #self.model.eval()
+        elif self.mode == "Bert":
+            self.model = BertForTokenClassification.from_pretrained(path)
+            self.tokenizer = AutoTokenizer.from_pretrained(path)
 
     def predict(self, sentence):
         self.model.to(self.device)
