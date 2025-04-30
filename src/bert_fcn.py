@@ -12,8 +12,7 @@ from torch.optim import AdamW
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import f1_score, classification_report
-from concurrent.futures import ThreadPoolExecutor
-from src.utils import write_file, pad_sequences_torch, prepare_dataset
+from src.utils import write_file, pad_sequences_torch, prepare_dataset, display_results
 
 
 class BertTrainer(object):
@@ -230,11 +229,7 @@ class BertTrainer(object):
 
             validation_loss_values.append(eval_loss)
             if verbose:
-                print("Validation loss: {}".format(eval_loss))
-                print("Validation Accuracy: {}".format(acc))
-                print("Validation F1-Score: {}".format(f1))
-                print("Classification Report:\n", classification_rep)
-                print()
+                display_results(eval_loss, acc, f1, classification_rep)
 
             self.loss_values = loss_values
             self.validation_loss_values = validation_loss_values
@@ -244,15 +239,15 @@ class BertTrainer(object):
                 currloss = eval_loss
                 if save_logs:
                     with open(save_logs, 'w', encoding='utf-8') as log_file:
-                        write_file(log_file, epoch, epochs, avg_train_loss, eval_loss,
-                                   acc, f1, classification_rep)
+                        write_file(log_file, eval_loss, acc, f1, classification_rep,
+                                   epoch, epochs, avg_train_loss)
 
-    def _test_model(self, dataloader, loss_fn):
+    def _test_model(self, dataloader, loss_fn, verbose=False):
         self.model.eval()
 
         eval_loss = 0
         predictions, true_labels = [], []
-        for batch in dataloader:
+        for batch in tqdm(dataloader) if verbose else dataloader:
             batch = tuple(t.to(self.device) for t in batch)
             b_input_ids, b_input_mask, b_labels = batch
 
@@ -286,6 +281,22 @@ class BertTrainer(object):
 
         return (eval_loss, acc, f1, classification_rep)
 
+    def evaluate_model(self, df, bs=16, weights=None, verbose=True, save_logs=None):
+        dataloader = self.df_to_loader(df, bs=bs)
+        if weights is None:
+            weights = [1]*len(self.tag2idx)
+        if isinstance(weights, list):
+            weights = torch.tensor(weights)
+        class_weights = weights.to(self.device)
+        loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+        eval_loss, acc, f1, classification_rep = self._test_model(dataloader,
+                                                                  loss_fn, verbose)
+        if verbose:
+            display_results(eval_loss, acc, f1, classification_rep)
+
+        if save_logs:
+            with open(save_logs, 'w', encoding='utf-8') as log_file:
+                write_file(log_file, eval_loss, acc, f1, classification_rep)
 
     def save_model(self, path):
         if self.mode != "Custom":

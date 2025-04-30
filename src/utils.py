@@ -15,6 +15,14 @@ def prepare_dataset(df):
     return (labels, sentences, tag_values, tag2idx)
 
 
+def display_results(eval_loss, acc, f1, classification_rep):
+    print("Validation loss: {}".format(eval_loss))
+    print("Validation Accuracy: {}".format(acc))
+    print("Validation F1-Score: {}".format(f1))
+    print("Classification Report:\n", classification_rep)
+    print()
+
+
 def align_class_weights(df, tag2idx):
     label_weights_dict = ((df["Label"].value_counts()/len(df))**-1).to_dict()
     num_classes = len(tag2idx)
@@ -24,9 +32,12 @@ def align_class_weights(df, tag2idx):
     return weights
 
 
-def write_file(log_file, epoch, epochs, avg_train_loss, eval_loss, acc, f1, classif_report):
-    log_file.write(f"Epoch {epoch+1}/{epochs}\n")
-    log_file.write(f"Average train loss: {avg_train_loss}\n")
+def write_file(log_file, eval_loss, acc, f1, classif_report,
+               epoch=None, epochs=None, avg_train_loss=None):
+    if epoch and epochs:
+        log_file.write(f"Epoch {epoch+1}/{epochs}\n")
+    if avg_train_loss:
+        log_file.write(f"Average train loss: {avg_train_loss}\n")
     log_file.write(f"Validation loss: {eval_loss}\n")
     log_file.write(f"Validation Accuracy: {acc}\n")
     log_file.write(f"Validation F1-Score: {f1}\n")

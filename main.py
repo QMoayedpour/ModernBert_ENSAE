@@ -1,14 +1,17 @@
 from src.bert_fcn import BertTrainer
 from src.utils import prepare_dataset, align_class_weights
 import pandas as pd
+import warnings
+warnings.filterwarnings("ignore")
 
-PATH_MODEL = "./models/model1"
-PATH_LOGS = "./logs/test_logs.txt"
+PATH_MODEL = "./models/test"
+PATH_LOGS = "./logs/test.txt"
+PATH_VALID_LOGS = "./logs/valid.txt"
 MODEL = "answerdotai/ModernBERT-base"
 PATH_DATASET = "./data/"
-DEVICE = "cuda"
-BATCH_SIZE = 16
-EPOCHS = 5
+DEVICE = "cpu"
+BATCH_SIZE = 8
+EPOCHS = 1
 
 
 def main(config):
@@ -19,7 +22,7 @@ def main(config):
     labels, sentences, tag_values, tag2idx = prepare_dataset(df_train)
     labels_t, sentences_t, tag_values_t, _ = prepare_dataset(df_test)
 
-    trainer = BertTrainer(sentences=sentences, labels=labels, tag_values=tag_values,
+    trainer = BertTrainer(sentences=sentences[:10], labels=labels[:10], tag_values=tag_values,
                           tokenizer=MODEL, device=DEVICE, mode="ModernBert")
 
     trainer.preprocess(bs=BATCH_SIZE)
@@ -32,7 +35,9 @@ def main(config):
     trainer.load_model(PATH_MODEL)
 
     # ADD EVAL FCN
+    trainer.evaluate_model(df_valid.iloc[:1000], BATCH_SIZE, weights,
+                           verbose=False, save_logs=PATH_VALID_LOGS)
 
 
 if __name__ == "__main__":
-    main()
+    main("")
