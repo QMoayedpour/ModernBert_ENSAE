@@ -1,12 +1,11 @@
 import numpy as np
 from seqeval.metrics import accuracy_score
 import torch.nn as nn
-from tqdm import tqdm, trange
+from tqdm import tqdm
 import torch
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 from transformers import BertTokenizer
 from sklearn.model_selection import train_test_split
-from transformers import get_linear_schedule_with_warmup
 from transformers import BertForTokenClassification, ModernBertForTokenClassification, AutoTokenizer
 from torch.optim import AdamW
 import matplotlib.pyplot as plt
@@ -17,7 +16,8 @@ from src.utils import write_file, pad_sequences_torch, prepare_dataset, display_
 
 class BertTrainer(object):
     def __init__(self, sentences=[], labels=[], tag_values=[],
-                 tokenizer='bert-base-uncased', max_len=512, device="cpu", mode="Bert", custom_model=None,
+                 tokenizer='bert-base-uncased', max_len=512, device="cpu",
+                 mode="Bert", custom_model=None,
                  test_sentences=None, test_labels=None):
         self.sentences = sentences
         self.tag_values = tag_values
@@ -47,12 +47,12 @@ class BertTrainer(object):
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer, do_lower_case=True)
             self.model = ModernBertForTokenClassification.from_pretrained(tokenizer,
                                                                           num_labels=len(self.tag2idx),
-                                                                          output_attentions=False,
-                                                                          output_hidden_states=False)
+                                                                          output_attentions=0,
+                                                                          output_hidden_states=0)
         elif mode == "Custom":
             assert self.custom_model is not None, "custom_model is empty"
             self.model = self.custom_model
-        
+
         print("Model Loaded")
 
     def getparam(self, MAX_LEN=512):
@@ -77,7 +77,7 @@ class BertTrainer(object):
         return tokenized_sentence, labels
 
     def _tokenize_text(self, sentences, labels):
-        tokenized_texts_and_labels = [self.tokenize_and_preserve_labels(sent, labs) for sent, labs in zip(sentences, labels) ]
+        tokenized_texts_and_labels = [self.tokenize_and_preserve_labels(sent, labs) for sent, labs in zip(sentences, labels)]
         tokenized_texts = [token_label_pair[0] for token_label_pair in tokenized_texts_and_labels]
 
         Nlabels = [token_label_pair[1] for token_label_pair in tokenized_texts_and_labels]
@@ -93,7 +93,7 @@ class BertTrainer(object):
 
         attention_masks = [[float(i != 0.0) for i in ii] for ii in input_ids]
 
-        return (input_ids, tags, attention_masks)    
+        return (input_ids, tags, attention_masks)
 
     def df_to_loader(self, df, bs=16):
         labels, sentences, tag_values, _ = prepare_dataset(df)
@@ -149,9 +149,9 @@ class BertTrainer(object):
         no_decay = ['bias', 'gamma', 'beta']
         optimizer_grouped_parameters = [
             {'params': [p for n, p in params if not any(nd in n for nd in no_decay)],
-            'weight_decay_rate': 0.01},
+             'weight_decay_rate': 0.01},
             {'params': [p for n, p in params if any(nd in n for nd in no_decay)],
-            'weight_decay_rate': 0.0}
+             'weight_decay_rate': 0.0}
         ] if FULL_FINETUNING else [{"params": [p for n, p in params]}]
 
         self.optimizer = AdamW(optimizer_grouped_parameters, lr=lr, eps=eps)
@@ -183,7 +183,7 @@ class BertTrainer(object):
         if save_logs is not None:
             log_file = open(save_logs, 'a', encoding='utf-8')
 
-        for epoch in range(epochs):#, desc="Epoch"):
+        for epoch in range(epochs):
             self.model.train()
             total_loss = 0
 
@@ -264,7 +264,8 @@ class BertTrainer(object):
             logits = scores.cpu().numpy()
             label_ids = b_labels.to('cpu').numpy()
             targets = b_labels[:, :scores.shape[1]]
-            eval_loss += loss_fn(scores.view(-1, scores.shape[-1]), targets.view(-1).long()).mean().item()
+            eval_loss += loss_fn(scores.view(-1, scores.shape[-1]),
+                                 targets.view(-1).long()).mean().item()
             predictions.extend([list(p) for p in np.argmax(logits, axis=2)])
             true_labels.extend(label_ids)
 
@@ -377,7 +378,7 @@ class BertTrainer(object):
         sns.set(style='darkgrid')
 
         sns.set(font_scale=1.5)
-        plt.rcParams["figure.figsize"] = (12,6)
+        plt.rcParams["figure.figsize"] = (12, 6)
 
         plt.plot(self.loss_values, 'b-o', label="training loss")
         plt.plot(self.validation_loss_values, 'r-o', label="validation loss")
@@ -395,7 +396,7 @@ class BertTrainer(object):
         sns.set(style='darkgrid')
 
         sns.set(font_scale=1.5)
-        plt.rcParams["figure.figsize"] = (12,6)
+        plt.rcParams["figure.figsize"] = (12, 6)
 
         plt.plot(self.batch_loss, label="training batch loss")
 
