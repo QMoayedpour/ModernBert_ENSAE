@@ -15,13 +15,15 @@ def main(config):
     labels_t, sentences_t, tag_values_t, _ = prepare_dataset(df_test)
 
     trainer = BertTrainer(sentences=sentences, labels=labels, tag_values=tag_values,
-                          tokenizer=config['MODEL'], device=config['DEVICE'], mode="ModernBert",
+                          tokenizer=config['MODEL'], device=config['DEVICE'], mode=config['MODE'],
                           test_sentences=sentences_t, test_labels=labels_t)
 
-    trainer.preprocess(bs=config['BATCH_SIZE'])
+    trainer.preprocess(bs=config['BATCH_SIZE'], lr=config['LR'])
 
-    weights = align_class_weights(df_train, tag2idx)
-
+    if config['WEIGHTED']:
+        weights = align_class_weights(df_train, tag2idx)
+    else:
+        weights = [1] * len(tag2idx)
     trainer.train_eval(weight=weights, path=config['PATH_MODEL'],
                        epochs=config['EPOCHS'], save_logs=config['PATH_LOGS'],
                        patience=config["PATIENCE"], verbose=False)
