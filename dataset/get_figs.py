@@ -6,6 +6,7 @@ from transformers import AutoModel, AutoTokenizer
 from sklearn.manifold import TSNE
 import torch
 import numpy as np
+from src.rope import RoPE
 
 
 def get_n_words_per_setence(df, save=False):
@@ -50,9 +51,10 @@ def encode_word(word, embedder, tokenizer, device="cuda"):
 
 def get_tsne_bert(df, model='bert-base-uncased', n=300, random_state=42,
                   save_fig=None, device="cuda", model_name="base"):
-    df["Label"] = df["Label"].apply(lambda x: x[2:] if x!="O" else x)
-    df_sampled = df.groupby("Label").apply(lambda x: x.sample(n=n,
-                                                              random_state=random_state)).reset_index(drop=True)
+    df_m = df.copy()
+    df_m["Label"] = df_m["Label"].apply(lambda x: x[2:] if x!="O" else x)
+    df_sampled = df_m.groupby("Label").apply(lambda x: x.sample(n=n,
+                                                                random_state=random_state)).reset_index(drop=True)
 
     tokenizer = AutoTokenizer.from_pretrained(model)
     embedder = AutoModel.from_pretrained(model).to(device)
@@ -100,6 +102,50 @@ def get_wordcloud(df, n_words=200, save_fig=None):
         plt.show()
 
 
+def show_pos_embedding_base(max_pos=50, d_model=128, save_fig=None):
+    pos = np.arange(max_pos)[:, np.newaxis]
+    dim = np.arange(0, d_model, 2)[np.newaxis, :]
+    inv_freq = 1.0 / (10000 ** (dim / d_model))
+    theta = pos * inv_freq
+
+    rope_pe = np.zeros((max_pos, d_model))
+    rope_pe[:, 0::2] = np.cos(theta)
+    rope_pe[:, 1::2] = np.sin(theta)
+    rope_pe = np.flip(rope_pe, 0)
+
+    plt.figure(figsize=(12, 6))
+    plt.imshow(rope_pe, cmap='viridis', aspect='equal')
+    plt.title("")
+    plt.ylabel("Position in the sequence")
+    plt.xlabel("Dimension")
+    plt.yticks([])
+    if save_fig:
+        plt.savefig(save_fig)
+    else:
+        plt.show()
+
+
+def get_rope_similarity(rope, max_pos=25, save_fig=None):
+    similarities = np.zeros((max_pos, max_pos))
+    base_vector = np.random.randn(1, rope.d_model)
+    
+    for m in range(max_pos):
+        q = rope.rotate(base_vector, m)
+        for n in range(max_pos):
+            k = rope.rotate(base_vector, n)
+            similarities[m, n] = q @ k.T
+            
+    plt.figure(figsize=(10, 8))
+    plt.imshow(similarities, cmap='viridis')
+    plt.title("RoPE Attention Similarities")
+    plt.xlabel("Key Position")
+    plt.ylabel("Query Position")
+    if save_fig:
+        plt.savefig(save_fig)
+    else:
+        plt.show()
+
+
 if __name__ == "__main__":
 
     df = pd.read_csv("../data/train.csv", index_col=0)
@@ -107,3 +153,13 @@ if __name__ == "__main__":
     get_wordcloud(df, save_fig="./figs/wordcloud.png")
     get_tsne_bert(df, model='bert-base-uncased', n=300, random_state=42,
                   save_fig="./figs/tsne_bert.png", device="cuda", model_name="base")
+    get_tsne_bert(df, model='dmis-lab/biobert-v1.1', n=300, random_state=42,
+                  save_fig="./figs/tsne_biobert.png", device="cuda", model_name="base")
+    get_tsne_bert(df, model='dmis-lab/biobert-v1.1', n=300, random_state=42,
+                  save_fig="./figs/tsne_biobert.png", device="cuda", model_name="BioBert")
+    get_tsne_bert(df, model='answerdotai/ModernBERT-base', n=300, random_state=42,
+                  save_fig="./figs/tsne_modernbert.png", device="cuda", model_name="ModernBertBase")
+    get_tsne_bert(df, model='Simonlee711/Clinical_ModernBERT', n=300, random_state=42,
+                  save_fig="./figs/clinical_modernbert.png", device="cuda", model_name="ClinicalModernBert")
+    show_pos_embedding_base(save_fig = "./figs/pos_embd_base.png")
+    get_rope_similarity(RoPE(d_model=64), 25, "./figs/rope_sim.png")
