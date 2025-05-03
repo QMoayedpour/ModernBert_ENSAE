@@ -1,5 +1,14 @@
 import os
 import torch
+import json
+
+
+def load_tag2idx(filename="./data/tag2idx.json"):
+    if os.path.exists(filename):
+        with open(filename, 'r') as f:
+            return json.load(f)
+    else:
+        return None
 
 
 def prepare_dataset(df):

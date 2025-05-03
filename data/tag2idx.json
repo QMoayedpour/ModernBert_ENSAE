@@ -1,0 +1,16 @@
+{
+    "B-Procedure": 0,
+    "I-Mood": 1,
+    "I-Procedure": 2,
+    "I-Condition": 3,
+    "B-Person": 4,
+    "O": 5,
+    "B-Observation": 6,
+    "B-Drug": 7,
+    "I-Drug": 8,
+    "B-Condition": 9,
+    "I-Observation": 10,
+    "I-Person": 11,
+    "B-Mood": 12,
+    "PAD": 13
+}

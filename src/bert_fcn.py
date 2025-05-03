@@ -4,7 +4,7 @@ import torch.nn as nn
 from tqdm import tqdm
 import torch
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
-from transformers import BertTokenizer
+from transformers import BertTokenizer, get_linear_schedule_with_warmup
 from sklearn.model_selection import train_test_split
 from transformers import BertForTokenClassification, ModernBertForTokenClassification, AutoTokenizer
 from torch.optim import AdamW
@@ -120,7 +120,7 @@ class BertTrainer(object):
         sampler = RandomSampler(dataset) if shuffle else SequentialSampler(dataset)
         return DataLoader(dataset, sampler=sampler, batch_size=bs)
 
-    def preprocess(self, random_state=100, test_size=0.1, bs=32, FULL_FINETUNING=True,
+    def preprocess(self, random_state=100, test_size=0.1, bs=32, full_finetuning=True,
                    lr=3e-5, eps=1e-8, verbose=False):
 
         if verbose:
@@ -145,14 +145,14 @@ class BertTrainer(object):
 
         self._load_tokenizer(self.tokname, mode=self.mode)
 
-        params = self.model.named_parameters() if FULL_FINETUNING else self.model.classifier.named_parameters()
+        params = self.model.named_parameters() if full_finetuning else self.model.classifier.named_parameters()
         no_decay = ['bias', 'gamma', 'beta']
         optimizer_grouped_parameters = [
             {'params': [p for n, p in params if not any(nd in n for nd in no_decay)],
              'weight_decay_rate': 0.01},
             {'params': [p for n, p in params if any(nd in n for nd in no_decay)],
              'weight_decay_rate': 0.0}
-        ] if FULL_FINETUNING else [{"params": [p for n, p in params]}]
+        ] if full_finetuning else [{"params": [p for n, p in params]}]
 
         self.optimizer = AdamW(optimizer_grouped_parameters, lr=lr, eps=eps)
 
@@ -176,11 +176,11 @@ class BertTrainer(object):
         class_weights = weight.to(self.device)
         loss_fn = nn.CrossEntropyLoss(weight=class_weights)
         stop_count = 0
-        #scheduler = get_linear_schedule_with_warmup(
-        #    self.optimizer,
-        #    num_warmup_steps=20000,
-        #    num_training_steps=total_steps
-        #)
+        scheduler = get_linear_schedule_with_warmup(
+            self.optimizer,
+            num_warmup_steps=0,
+            num_training_steps=total_steps
+        )
 
         if save_logs is not None:
             log_file = open(save_logs, 'a', encoding='utf-8')
@@ -217,7 +217,7 @@ class BertTrainer(object):
 
                 self.optimizer.step()
 
-                #scheduler.step()
+                scheduler.step()
 
             avg_train_loss = total_loss / len(self.train_dataloader)
 
@@ -271,12 +271,13 @@ class BertTrainer(object):
             logits = scores.cpu().numpy()
             label_ids = b_labels.cpu().numpy()
             targets = b_labels[:, :scores.shape[1]]
+
             eval_loss += loss_fn(scores.view(-1, scores.shape[-1]),
                                  targets.view(-1).long()).mean().item()
             predictions.extend([list(p) for p in np.argmax(logits, axis=2)])
             true_labels.extend(label_ids)
 
-        eval_loss = eval_loss / len(self.valid_dataloader)
+        eval_loss = eval_loss / len(dataloader)
 
         pred_tags = [self.tag_values[p_i] for p, l in zip(predictions, true_labels)
                      for p_i, l_i in zip(p, l) if self.tag_values[l_i] != "PAD"]
@@ -295,9 +296,9 @@ class BertTrainer(object):
         if weights is None:
             weights = [1]*len(self.tag2idx)
         if isinstance(weights, list):
-            weights = torch.tensor(weights)
+            weights = torch.tensor(weights).float()
         class_weights = weights.to(self.device)
-        loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+        loss_fn = nn.CrossEntropyLoss(weight=class_weights, ignore_index=-100)
         eval_loss, acc, f1, classification_rep = self._test_model(dataloader,
                                                                   loss_fn, verbose)
         if verbose:
@@ -311,6 +312,8 @@ class BertTrainer(object):
         if self.mode != "Custom":
             self.model.save_pretrained(path)
             self.tokenizer.save_pretrained(path)
+        else:
+            torch.save(self.model.state_dict(), path + '.pth')
 
     def load_model(self, path):
         if self.mode == "ModernBert":
@@ -320,6 +323,8 @@ class BertTrainer(object):
         elif self.mode == "Bert":
             self.model = BertForTokenClassification.from_pretrained(path)
             self.tokenizer = AutoTokenizer.from_pretrained(path)
+        elif self.mode == "Custom":
+            self.model.load_state_dict(torch.load(path + '.pth'))
 
     def predict(self, sentence):
         self.model.to(self.device)
