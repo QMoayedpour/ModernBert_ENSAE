@@ -62,3 +62,26 @@ Since we only focus on specific medical terms (we are not interested in tagging 
 | O       |             74.59 |
 | I       |             13.22 |
 | B       |             12.18 |
+
+
+---
+
+### Word Representation
+
+All the point of using a Bert Model is to start with a consistent representation for each tokens. In our case, since most of the term are medical related, we may think that a Bert model trainer on a medical corpus will be more pertinent. To see that, we can take a model, project n tokens of each labels with the model, and visualize the embedding with a TSNE projection:
+
+* Bert Base
+
+![dummy5](./figs/tsne_bert.png)
+
+* Bio Bert
+
+![dummy6](./figs/tsne_biobert.png)
+
+* Modern Bert
+
+![dummy7](./figs/tsne_modrnbert.png)
+
+* Clinical Modern Bert
+
+![dummy8](./figs/clinical_modernbert.png)
