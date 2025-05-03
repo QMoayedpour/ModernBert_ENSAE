@@ -80,7 +80,7 @@ All the point of using a Bert Model is to start with a consistent representation
 
 * Modern Bert
 
-![dummy7](./figs/tsne_modrnbert.png)
+![dummy7](./figs/tsne_modernbert.png)
 
 * Clinical Modern Bert
 
