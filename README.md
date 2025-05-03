@@ -8,8 +8,6 @@ The project is a study and an application of [ModernBert]() on Clinical Trials d
 
 # Structure
 
-Directory structure:
-└── qmoayedpour-modernbert_ensae/
     ├── README.md
     ├── config.yaml
     ├── main.py
