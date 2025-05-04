@@ -94,3 +94,7 @@ model.evaluate_model(df_eval)
 predictions = model.predict("I need a healthy man")
 
 ```
+
+# Contribution
+
+The code was written by Naïl KHELIFA (nail.khelifa@ensae.fr) and Quentin MOAYEDPOUR (quentin.moayedpour@ensae.fr) but **all the commits** were done through Quentin MOAYEDPOUR's account since it had more access to sspcloud than Naïl's account (more GPU available) which was really important for the project (most models should take more than 3 hours for a training on CPU)
