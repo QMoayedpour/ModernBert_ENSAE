@@ -1,5 +1,5 @@
 from src.bert_fcn import BertTrainer
-from src.utils import prepare_dataset, align_class_weights
+from src.utils import prepare_dataset, align_class_weights, load_tag2idx
 import pandas as pd
 import yaml
 import warnings
@@ -14,11 +14,13 @@ def main(config):
     labels, sentences, tag_values, tag2idx = prepare_dataset(df_train)
     labels_t, sentences_t, tag_values_t, _ = prepare_dataset(df_test)
 
+    tag2idx = load_tag2idx("./data/tag2idx.json")
+
     trainer = BertTrainer(sentences=sentences, labels=labels, tag_values=tag_values,
                           tokenizer=config['MODEL'], device=config['DEVICE'], mode=config['MODE'],
                           test_sentences=sentences_t, test_labels=labels_t)
 
-    trainer.preprocess(bs=config['BATCH_SIZE'], lr=config['LR'])
+    trainer.preprocess(bs=config['BATCH_SIZE'], lr=config['LR'], full_finetuning=config["FULL_FINETUNING"])
 
     if config['WEIGHTED']:
         weights = align_class_weights(df_train, tag2idx)

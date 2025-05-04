@@ -1,13 +1,13 @@
-PATH_MODEL : "./models/BertBase1E"
-PATH_LOGS : "./logs/BertBase1E.txt"
-PATH_VALID_LOGS : "./logs/BertBase1EValid.txt"
-MODEL : "google-bert/bert-base-uncased"
+PATH_MODEL : "./models/BioBert1E"
+PATH_LOGS : "./logs/BioBert1E.txt"
+PATH_VALID_LOGS : "./logs/BioBert1EValide.txt"
+MODEL : "dmis-lab/biobert-large-cased-v1.1-squad"
 MODE : "Bert"
 PATH_DATASET : "./data/"
 DEVICE : "cuda"
-WEIGHTED: False
+WEIGHTED: True
 FULL_FINETUNING: True
-BATCH_SIZE : 16
+BATCH_SIZE : 8
 EPOCHS : 1
 PATIENCE : 1
 LR: 0.00003
