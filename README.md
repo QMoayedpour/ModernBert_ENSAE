@@ -95,6 +95,34 @@ predictions = model.predict("I need a healthy man")
 
 ```
 
+# Results on valid dataset
+
+**Clinical Modern Bert**
+
+| Label           | Precision | Recall | F1-score | Support |
+|----------------|-----------|--------|----------|---------|
+| I-Person       | 0.00      | 0.00   | 0.00     | 31      |
+| I-Mood         | 0.00      | 0.00   | 0.00     | 53      |
+| O              | 0.90      | 0.93   | 0.92     | 19618   |
+| I-Drug         | 0.45      | 0.81   | 0.58     | 426     |
+| I-Observation  | 0.71      | 0.03   | 0.06     | 356     |
+| B-Procedure    | 0.68      | 0.46   | 0.55     | 597     |
+| I-Procedure    | 0.54      | 0.54   | 0.54     | 538     |
+| I-Condition    | 0.81      | 0.73   | 0.76     | 2624    |
+| B-Observation  | 0.59      | 0.07   | 0.13     | 217     |
+| B-Mood         | 0.60      | 0.41   | 0.49     | 70      |
+| B-Person       | 0.83      | 0.72   | 0.77     | 203     |
+| B-Condition    | 0.81      | 0.74   | 0.77     | 2623    |
+| B-Drug         | 0.67      | 0.88   | 0.76     | 967     |
+
+**Accuracy**: 0.85 (Total: 28323)
+
+| Average Type | Precision | Recall | F1-score | Support |
+|--------------|-----------|--------|----------|---------|
+| Macro avg    | 0.58      | 0.49   | 0.49     | 28323   |
+| Weighted avg | 0.85      | 0.85   | 0.84     | 28323   |
+
+
 # Contribution
 
-The code was written by Naïl KHELIFA (nail.khelifa@ensae.fr) and Quentin MOAYEDPOUR (quentin.moayedpour@ensae.fr) but **all the commits** were done through Quentin MOAYEDPOUR's account since it had more access to sspcloud than Naïl's account (more GPU available) which was really important for the project (most models should take more than 3 hours for a training on CPU)
+The code was written by Naïl KHELIFA (nail.khelifa@ensae.fr) and Quentin MOAYEDPOUR (quentin.moayedpour@ensae.fr) but **all the commits** were done through Quentin MOAYEDPOUR's account since it had more access to sspcloud than Naïl's account (more GPU available) which was really important for the project (most models should take more than 3 hours for a training on CPU).
