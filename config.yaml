@@ -1,6 +1,6 @@
 PATH_MODEL : "./models/BertBase1E"
 PATH_LOGS : "./logs/BertBase1E.txt"
-PATH_VALID_LOGS : "./logs/BertBase1E.txt"
+PATH_VALID_LOGS : "./logs/BertBase1EValid.txt"
 MODEL : "google-bert/bert-base-uncased"
 MODE : "Bert"
 PATH_DATASET : "./data/"
