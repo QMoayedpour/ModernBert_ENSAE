@@ -95,8 +95,10 @@ class BertTrainer(object):
 
         return (input_ids, tags, attention_masks)
 
-    def df_to_loader(self, df, bs=16):
+    def df_to_loader(self, df, tag2idx=None, bs=16):
         labels, sentences, tag_values, _ = prepare_dataset(df)
+        if tag2idx is not None:
+            tag_values = tag2idx
         dataloader = self._get_dataloader(labels, sentences, tag_values, bs=bs)
         return dataloader
 
@@ -290,9 +292,10 @@ class BertTrainer(object):
 
         return (eval_loss, acc, f1, classification_rep)
 
-    def evaluate_model(self, df, bs=16, weights=None, verbose=True, save_logs=None):
+    def evaluate_model(self, df, tag2idx=None, bs=16,
+                       weights=None, verbose=True, save_logs=None):
         self.model.to(self.device)
-        dataloader = self.df_to_loader(df, bs=bs)
+        dataloader = self.df_to_loader(df, tag2idx=tag2idx, bs=bs)
         if weights is None:
             weights = [1]*len(self.tag2idx)
         if isinstance(weights, list):
@@ -310,6 +313,8 @@ class BertTrainer(object):
 
     def save_model(self, path):
         if self.mode != "Custom":
+            self.model.config.id2label = self.tag2idx
+            self.model.config.label2id = {v: k for k, v in self.tag2idx.items()}
             self.model.save_pretrained(path)
             self.tokenizer.save_pretrained(path)
         else:
