@@ -313,8 +313,8 @@ class BertTrainer(object):
 
     def save_model(self, path):
         if self.mode != "Custom":
-            self.model.config.id2label = self.tag2idx
-            self.model.config.label2id = {v: k for k, v in self.tag2idx.items()}
+            self.model.config.id2label = {v: k for k, v in self.tag2idx.items()}
+            self.model.config.label2id = self.tag2idx
             self.model.save_pretrained(path)
             self.tokenizer.save_pretrained(path)
         else:
