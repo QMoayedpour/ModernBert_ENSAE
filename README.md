@@ -62,3 +62,35 @@ Then, to reproduce an experiment, select the parameters in ``config.yaml`` and t
 ```bash
 python main.py
 ```
+
+# Usage
+
+```python
+
+from src.utils import prepare_dataset
+from src.bert_fcn import BertTrainer
+
+df = pd.read_csv("mydf.csv")
+
+labels, sentences, tag_values, tag2idx = prepare_dataset(df)
+
+model = BertTrainer(sentences=sentences, labels=labels,
+                    tag_values=tag_values, tokenizer="google-bert/bert-base-uncased",
+                    device="cuda", mode="Bert")
+
+model.preprocess(bs=16) # Batch size
+
+model.train_eval(epochs=10, save_logs="save_my_logs.txt")
+
+
+# Eval
+
+df_eval = pd.read_csv("inference_df.csv")
+
+model.evaluate_model(df_eval)
+
+# Inference
+
+predictions = model.predict("I need a healthy man")
+
+```
