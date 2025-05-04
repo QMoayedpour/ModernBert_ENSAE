@@ -5,7 +5,7 @@ MODEL : "dmis-lab/biobert-large-cased-v1.1-squad"
 MODE : "Bert"
 PATH_DATASET : "./data/"
 DEVICE : "cuda"
-WEIGHTED: True
+WEIGHTED: False
 FULL_FINETUNING: True
 BATCH_SIZE : 8
 EPOCHS : 1
