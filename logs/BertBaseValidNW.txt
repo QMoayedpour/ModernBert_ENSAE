@@ -1,0 +1,27 @@
+Validation loss: 0.3028298433286598
+Validation Accuracy: 0.6430689827831915
+Validation F1-Score: 0.5969310908136832
+Classification Report:
+               precision    recall  f1-score   support
+
+  B-Procedure       0.32      0.74      0.45       602
+       B-Drug       0.66      0.93      0.77      1100
+  I-Condition       0.64      0.80      0.71      2316
+     B-Person       0.27      0.84      0.41       163
+B-Observation       0.11      0.50      0.18       161
+       B-Mood       0.05      0.75      0.09        48
+I-Observation       0.13      0.39      0.20       297
+       I-Drug       0.30      0.88      0.45       371
+       I-Mood       0.04      0.70      0.07        44
+  B-Condition       0.55      0.85      0.67      2362
+     I-Person       0.04      0.25      0.07        24
+            O       0.98      0.57      0.72     18009
+  I-Procedure       0.29      0.73      0.41       466
+
+     accuracy                           0.64     25963
+    macro avg       0.34      0.69      0.40     25963
+ weighted avg       0.84      0.64      0.69     25963
+
+
+================================================================================
+
