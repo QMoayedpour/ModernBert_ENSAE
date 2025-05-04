@@ -1,6 +1,8 @@
-# ModernBert_ENSAE
+# Modern Bert: An application on Clinical Data
 
 Final project for the course Machine Learning for Natural Language Processing @ ENSAE with Christopher Kermorvant (kermorvant@teklia.com)
+
+![dummy](./figs/bert_doctor.png)
 
 # Presentation
 
